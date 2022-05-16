@@ -32,25 +32,44 @@ except mysql.connector.Error as err:
         else:
                 print(err)
 
-def mypbx_backup():
+
+def dialer_backup():
     print("Extracting data from S3 ...")
 
     # query into db
     cursor = cnx.cursor()
-    query = ("SELECT prefix FROM all_data")
+    query = ("SELECT prefix FROM dialer_data")
     cursor.execute(query)
-    service_list = list(itertools.chain(*cursor))
+    dialer_list = list(itertools.chain(*cursor))
 
     # fetching data from s3
-    for service in service_list:
-        dir_name = service+"/"
-        response_object = client.list_objects(Bucket="all-mysql-backup", Prefix=dir_name, Delimiter="/")
+    for dialer in dialer_list:
+        dir_name = dialer + "/mysqlbackup/"
+        response_object = client.list_objects(Bucket="dialer-backup", Prefix=dir_name, Delimiter="/")
         
         for filename in response_object["Contents"]:
-            print(filename["LastModified"].date())
+            if filename["LastModified"].date() not in date_list:
+                date_list.append(filename["LastModified"].date())
+            files[dialer] = [{"FileName": filename["Key"].split('/')[2].encode("ascii"), "TimeStamp": filename["LastModified"].date()}
+                            for filename in response_object["Contents"]]
+
+    print("Processing data into file ...")
+
+    date_list.sort()
+    for dt in date_list:
+        data_file[dt] = {server_name: [val["FileName"] for val in file_list if dt == val["TimeStamp"]]
+                        for server_name, file_list in files.items()}
+
+    print("Backup Report Exported... File Location - /home/users/ldap_username")
+
+    print("Connection Closed")
+    cnx.close()
+
+    df = pandas.DataFrame(data_file)
+    df.to_csv("/home/users/aveekmukherjee/Backup_Report.csv")
 
 def main():
-    mypbx_backup()
+    dialer_backup()
 
-if __name__== "__main__":
+if __name__ == "__main__":
     main()
